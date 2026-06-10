@@ -118,9 +118,9 @@ Full audit report: [`/demo/accessibility-audit.md`](./demo/accessibility-audit.m
 | Name | Role |
 |---|---|
 | Manthan | Backend + Firebase |
-| [Dev A name] | Frontend + WCAG UI |
-| [Dev B name] | AI Scribe + Voice |
-| [Dhruv] | Accessibility Testing + Demo |
+| Ashwin | Frontend + WCAG UI |
+| Anant | AI Scribe + Voice |
+| Dhruv | Accessibility Testing + Demo |
 
 ---
 
