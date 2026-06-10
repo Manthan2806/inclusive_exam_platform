@@ -122,9 +122,9 @@ Full audit report: [`/demo/accessibility-audit.md`](./demo/accessibility-audit.m
 | Anant | AI Scribe + Voice |
 | Dhruv | Accessibility Testing + Demo |
 
----
-
 ## 📁 Project Structure
+
+```
 inclusive_exam_platform/
 ├── src/
 │   ├── components/        # UI components (Dev A)
@@ -134,9 +134,7 @@ inclusive_exam_platform/
 ├── backend/               # Node.js + Express (Dev C)
 ├── demo/                  # Screenshots + audit report
 └── README.md
-
----
-
+```
 ## 🌍 Impact
 
 - 2.68 crore registered differently-abled people in India
