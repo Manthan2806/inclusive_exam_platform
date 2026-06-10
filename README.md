@@ -71,10 +71,13 @@ cd ..
 ### Environment Variables
 
 Create a `.env` file in the root folder:
+
+```env
 VITE_FIREBASE_API_KEY=your_key
 VITE_FIREBASE_AUTH_DOMAIN=your_domain
 VITE_FIREBASE_PROJECT_ID=your_project_id
 ANTHROPIC_API_KEY=your_claude_api_key
+```
 
 ### Running Locally
 
@@ -105,9 +108,9 @@ node index.js
 
 | Test | Tool | Score |
 |---|---|---|
-| Lighthouse Accessibility | Chrome DevTools | _TBD_ |
-| WCAG 2.2 AA | axe DevTools | _TBD_ |
-| Screen Reader | Orca (Linux) | _TBD_ |
+| Lighthouse Accessibility | Chrome DevTools | 100/100 ✅ |
+| WCAG 2.1 AA | axe DevTools | 0 issues ✅ |
+| Screen Reader | Orca (Linux) | Pending |
 
 Full audit report: [`/demo/accessibility-audit.md`](./demo/accessibility-audit.md)
 
