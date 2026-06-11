@@ -1,0 +1,26 @@
+{
+  "name": "faraway",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Manthan2806/inclusive_exam_platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Manthan2806/inclusive_exam_platform/issues"
+  },
+  "homepage": "https://github.com/Manthan2806/inclusive_exam_platform#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.0.0"
+  }
+}
