@@ -2,6 +2,7 @@ import { useExamStore, type FontFamily, type LineSpacing, type ThemeMode } from 
 import { speak } from "@/lib/tts";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { Settings2, Type, Palette, AlignJustify, Gauge, X, Mic, MicOff, Volume2 } from "lucide-react";
+import { Button } from "./ui/button";
 import { useEffect, useState } from "react";
 
 export function AccessibilityToolbar() {
