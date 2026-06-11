@@ -1,5 +1,3 @@
-
-
 import { cleanupVoiceTranscript, simplifyComplexQuestion } from "./claudeAPI";
 
 // ── AI Scribe: clean up messy voice dictation ──
