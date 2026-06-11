@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useExamStore } from "@/store/examStore";
 import { EXAM } from "@/lib/examData";
 import { speak, stopSpeaking } from "@/lib/tts";
-import { cleanupTranscript } from "@/lib/aiScribe";
+import { cleanupTranscript, simplifyQuestion } from "@/lib/aiScribe";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import {
   ChevronLeft, ChevronRight, Flag, Mic, MicOff, Pencil, Sparkles,
@@ -66,6 +66,8 @@ function ExamPage() {
 
   const [mode, setMode] = useState<Mode>(config.voiceInput ? "speak" : "type");
   const [showSimple, setShowSimple] = useState(config.simplifiedLanguage);
+  const [simplifying, setSimplifying] = useState(false);
+  const [claudeSimplified, setClaudeSimplified] = useState<Record<number, string>>({});
   const [scribeOpen, setScribeOpen] = useState(false);
   const [scribePreview, setScribePreview] = useState({ raw: "", cleaned: "" });
 
@@ -79,7 +81,27 @@ function ExamPage() {
   }, [currentIndex, total]);
 
   const minTouch = config.largeTargets ? "h-14 min-w-14" : "h-12 min-w-12";
-
+      
+  const handleSimplify = async () => {
+  if (showSimple) {
+    setShowSimple(false);
+    return;
+  }
+  if (claudeSimplified[q.id]) {
+    setShowSimple(true);
+    return;
+  }
+  setSimplifying(true);
+  try {
+    const result = await simplifyQuestion(q.prompt);
+    setClaudeSimplified((prev) => ({ ...prev, [q.id]: result }));
+  } catch {
+    setClaudeSimplified((prev) => ({ ...prev, [q.id]: q.simplified }));
+  } finally {
+    setSimplifying(false);
+    setShowSimple(true);
+  }
+};
   return (
     <AppShell>
       <a id="main" />
@@ -122,7 +144,7 @@ function ExamPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => speak(showSimple ? q.simplified : q.prompt, prefs.ttsRate)}
+                    onClick={() => speak(showSimple ? (claudeSimplified[q.id] || q.simplified) : q.prompt, prefs.ttsRate)}
                     aria-label="Read question aloud"
                   >
                     <Volume2 className="h-4 w-4" /> Read aloud
@@ -131,24 +153,28 @@ function ExamPage() {
                     <VolumeX className="h-4 w-4" />
                   </Button>
                   <Button
-                    type="button"
-                    variant={showSimple ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowSimple((s) => !s)}
-                    aria-pressed={showSimple}
-                  >
-                    <Languages className="h-4 w-4" /> {showSimple ? "Original" : "Simplify"}
-                  </Button>
+  type="button"
+  variant={showSimple ? "default" : "outline"}
+  size="sm"
+  onClick={handleSimplify}
+  disabled={simplifying}
+  aria-pressed={showSimple}
+>
+  <Languages className="h-4 w-4" />
+  {simplifying ? "Simplifying…" : showSimple ? "Original" : "Simplify"}
+</Button>
                 </div>
               </div>
 
               <p className="text-foreground">{q.prompt}</p>
               {showSimple && (
-                <div className="mt-4 rounded-lg border-l-4 border-primary bg-primary/5 p-4">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Simplified</p>
-                  <p>{q.simplified}</p>
-                </div>
-              )}
+  <div className="mt-4 rounded-lg border-l-4 border-primary bg-primary/5 p-4">
+    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
+      Simplified {claudeSimplified[q.id] && claudeSimplified[q.id] !== q.simplified ? "· via Claude AI" : ""}
+    </p>
+    <p>{claudeSimplified[q.id] || q.simplified}</p>
+  </div>
+)}
 
               <div className="mt-6">
                 <div role="tablist" aria-label="Answer input mode" className="inline-flex rounded-lg border bg-background p-1">
@@ -397,7 +423,7 @@ function ScribeArea({
     setProcessing(true);
     // simulate latency
     await new Promise((r) => setTimeout(r, 600));
-    const cleaned = cleanupTranscript(transcript);
+    const cleaned = await cleanupTranscript(transcript);
     setProcessing(false);
     onResult(transcript, cleaned);
     reset();

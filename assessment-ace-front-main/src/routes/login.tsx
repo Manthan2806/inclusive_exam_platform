@@ -1,9 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { useExamStore, type DisabilityKey } from "@/store/examStore";
 import { EXAM } from "@/lib/examData";
+import { speak } from "@/lib/tts";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { ShieldCheck, Mic, Timer, Eye, Brain, Ear, Hand, Users, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -26,9 +28,35 @@ function LoginPage() {
   const [name, setName] = useState("");
   const [roll, setRoll] = useState("");
   const [selected, setSelected] = useState<DisabilityKey[]>([]);
+  const [activeVoiceField, setActiveVoiceField] = useState<"name" | "roll" | null>(null);
+  const { listening, transcript, supported, error, start, stop, reset: resetVoice, setManual } = useVoiceInput();
+
+  useEffect(() => {
+    if (activeVoiceField === "name") {
+      setName(transcript);
+    } else if (activeVoiceField === "roll") {
+      setRoll(transcript);
+    }
+  }, [transcript, activeVoiceField]);
 
   function toggle(k: DisabilityKey) {
     setSelected((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
+  }
+
+  function startVoice(field: "name" | "roll") {
+    setActiveVoiceField(field);
+    resetVoice();
+    start();
+  }
+
+  function stopVoice() {
+    stop();
+    setActiveVoiceField(null);
+  }
+
+  function readAccommodations() {
+    const speech = OPTIONS.map((o) => `${o.label}: ${o.desc}`).join(". ");
+    speak(speech, 1);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -71,29 +99,77 @@ function LoginPage() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="name" className="mb-1 block text-sm font-medium">Full name</label>
-              <input
-                id="name"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
-                className="h-11 w-full rounded-md border bg-background px-3"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  id="name"
+                  required
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (activeVoiceField === "name") setManual(e.target.value);
+                  }}
+                  autoComplete="name"
+                  className="h-11 w-full rounded-md border bg-background px-3"
+                />
+                <button
+                  type="button"
+                  onClick={() => (activeVoiceField === "name" && listening ? stopVoice() : startVoice("name"))}
+                  className={`inline-flex h-11 w-11 items-center justify-center rounded-md border ${activeVoiceField === "name" && listening ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
+                  aria-pressed={activeVoiceField === "name" && listening}
+                  aria-label={activeVoiceField === "name" && listening ? "Stop voice input for name" : "Start voice input for name"}
+                >
+                  <Mic className="h-5 w-5" aria-hidden />
+                </button>
+              </div>
+              {activeVoiceField === "name" && listening && (
+                <p className="mt-2 text-xs text-destructive">Listening for name…</p>
+              )}
             </div>
             <div>
               <label htmlFor="roll" className="mb-1 block text-sm font-medium">Roll number</label>
-              <input
-                id="roll"
-                required
-                value={roll}
-                onChange={(e) => setRoll(e.target.value)}
-                className="h-11 w-full rounded-md border bg-background px-3"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  id="roll"
+                  required
+                  value={roll}
+                  onChange={(e) => {
+                    setRoll(e.target.value);
+                    if (activeVoiceField === "roll") setManual(e.target.value);
+                  }}
+                  className="h-11 w-full rounded-md border bg-background px-3"
+                />
+                <button
+                  type="button"
+                  onClick={() => (activeVoiceField === "roll" && listening ? stopVoice() : startVoice("roll"))}
+                  className={`inline-flex h-11 w-11 items-center justify-center rounded-md border ${activeVoiceField === "roll" && listening ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
+                  aria-pressed={activeVoiceField === "roll" && listening}
+                  aria-label={activeVoiceField === "roll" && listening ? "Stop voice input for roll number" : "Start voice input for roll number"}
+                >
+                  <Mic className="h-5 w-5" aria-hidden />
+                </button>
+              </div>
+              {activeVoiceField === "roll" && listening && (
+                <p className="mt-2 text-xs text-destructive">Listening for roll number…</p>
+              )}
             </div>
           </div>
+          {(!supported || error) && (
+            <div className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50 p-3 text-sm text-amber-900">
+              {!supported ? (
+                <p>Voice input is not supported in this browser.</p>
+              ) : (
+                <p>Error with voice input: {error}</p>
+              )}
+            </div>
+          )}
 
           <fieldset className="mt-6">
-            <legend className="mb-2 text-sm font-medium">Disability profile (select all that apply)</legend>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <legend className="mb-2 text-sm font-medium">Disability profile (select all that apply)</legend>
+              <Button type="button" variant="outline" size="sm" className="h-9" onClick={readAccommodations}>
+                <Mic className="h-4 w-4" /> Read options
+              </Button>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {OPTIONS.map((o) => {
                 const checked = selected.includes(o.key);

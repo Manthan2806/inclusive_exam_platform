@@ -1,9 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { useExamStore } from "@/store/examStore";
 import { EXAM } from "@/lib/examData";
-import { ArrowLeft, CheckCircle2, Circle, Flag } from "lucide-react";
+import { speak } from "@/lib/tts";
+import { cleanupTranscript } from "@/lib/aiScribe";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { ArrowLeft, CheckCircle2, Circle, Flag, Mic, MicOff } from "lucide-react";
 
 export const Route = createFileRoute("/exam/$id/review")({
   head: () => ({ meta: [{ title: "Review answers — Inclusive Exam Platform" }] }),
@@ -15,6 +19,20 @@ function ReviewPage() {
   const navigate = useNavigate();
   const { answers, name } = useExamStore();
   const setCurrent = useExamStore((s) => s.setCurrent);
+  const setAnswer = useExamStore((s) => s.setAnswer);
+
+  const [reScribeQuestionId, setReScribeQuestionId] = useState<number | null>(null);
+  const [reScribeTranscript, setReScribeTranscript] = useState("");
+  const [reScribeCleaned, setReScribeCleaned] = useState("");
+  const [reScribeProcessing, setReScribeProcessing] = useState(false);
+
+  const { listening, transcript, supported, error, start, stop, reset, setManual } = useVoiceInput();
+
+  useEffect(() => {
+    if (reScribeQuestionId !== null) {
+      setReScribeTranscript(transcript);
+    }
+  }, [transcript, reScribeQuestionId]);
 
   const answered = EXAM.questions.filter((q) => answers[q.id]?.text?.trim()).length;
   const flagged = EXAM.questions.filter((q) => answers[q.id]?.flagged).length;
@@ -22,6 +40,40 @@ function ReviewPage() {
 
   function submit() {
     navigate({ to: "/confirmation" });
+  }
+
+  function openReScribeModal(questionId: number) {
+    setReScribeQuestionId(questionId);
+    setReScribeTranscript("");
+    setReScribeCleaned("");
+    reset();
+    start();
+  }
+
+  function closeReScribeModal() {
+    stop();
+    setReScribeQuestionId(null);
+    setReScribeTranscript("");
+    setReScribeCleaned("");
+  }
+
+  async function cleanReScribe() {
+    if (!reScribeTranscript.trim()) return;
+    setReScribeProcessing(true);
+    try {
+      const cleaned = await cleanupTranscript(reScribeTranscript);
+      setReScribeCleaned(cleaned);
+    } catch (err) {
+      console.warn("AI scribe failed", err);
+    } finally {
+      setReScribeProcessing(false);
+    }
+  }
+
+  function applyReScribe() {
+    if (reScribeQuestionId === null || !reScribeCleaned.trim()) return;
+    setAnswer(reScribeQuestionId, reScribeCleaned.trim());
+    closeReScribeModal();
   }
 
   return (
@@ -72,16 +124,33 @@ function ReviewPage() {
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setCurrent(i);
-                      navigate({ to: "/exam/$id", params: { id } });
-                    }}
-                  >
-                    Edit
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => speak(`${q.prompt}. Answer: ${a?.text ?? "No answer provided."}`)}
+                    >
+                      Read aloud
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openReScribeModal(q.id)}
+                      disabled={!has}
+                    >
+                      Re-scribe
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setCurrent(i);
+                        navigate({ to: "/exam/$id", params: { id } });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  </div>
                 </div>
               </li>
             );
@@ -104,7 +173,139 @@ function ReviewPage() {
           </div>
         </div>
       </main>
+      {reScribeQuestionId !== null && (
+        <ReScribeModal
+          question={EXAM.questions.find((q) => q.id === reScribeQuestionId)!}
+          originalAnswer={answers[reScribeQuestionId]?.text ?? ""}
+          transcript={reScribeTranscript}
+          cleaned={reScribeCleaned}
+          listening={listening}
+          supported={supported}
+          error={error}
+          processing={reScribeProcessing}
+          onStart={() => start()}
+          onStop={() => stop()}
+          onTranscriptChange={(value) => {
+            setManual(value);
+            setReScribeTranscript(value);
+          }}
+          onRequestClean={cleanReScribe}
+          onApply={applyReScribe}
+          onCancel={closeReScribeModal}
+        />
+      )}
     </AppShell>
+  );
+}
+
+function ReScribeModal({
+  question,
+  originalAnswer,
+  transcript,
+  cleaned,
+  listening,
+  supported,
+  error,
+  processing,
+  onStart,
+  onStop,
+  onTranscriptChange,
+  onRequestClean,
+  onApply,
+  onCancel,
+}: {
+  question: (typeof EXAM.questions)[number];
+  originalAnswer: string;
+  transcript: string;
+  cleaned: string;
+  listening: boolean;
+  supported: boolean;
+  error: string | null;
+  processing: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  onTranscriptChange: (value: string) => void;
+  onRequestClean: () => Promise<void>;
+  onApply: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rescribe-title"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onKeyDown={(e) => e.key === "Escape" && onCancel()}
+    >
+      <div className="w-full max-w-3xl rounded-xl bg-card p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 id="rescribe-title" className="text-xl font-semibold">Improve answer with AI scribe</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Speak again and let the AI clean your answer. The original answer stays visible until you confirm.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <section className="rounded-xl border bg-background p-4">
+            <h3 className="mb-2 text-sm font-semibold">Original answer</h3>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{originalAnswer || "No answer provided."}</p>
+          </section>
+          <section className="rounded-xl border bg-background p-4">
+            <h3 className="mb-2 text-sm font-semibold">Your updated transcript</h3>
+            {!supported ? (
+              <p className="text-sm text-amber-700">Voice input is not supported in this browser.</p>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={listening ? onStop : onStart}
+                    className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${listening ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
+                  >
+                    {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                    {listening ? "Stop recording" : "Start recording"}
+                  </button>
+                  {listening && <span className="text-sm text-muted-foreground">Listening...</span>}
+                </div>
+                <textarea
+                  value={transcript}
+                  onChange={(e) => onTranscriptChange(e.target.value)}
+                  rows={5}
+                  className="w-full resize-none rounded-md border bg-background p-3 text-sm"
+                  placeholder="Speak your improved answer here…"
+                />
+                {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+              </>
+            )}
+          </section>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={onRequestClean} disabled={processing || !transcript.trim()}>
+            {processing ? "Cleaning…" : "Clean with AI"}
+          </Button>
+          <Button type="button" onClick={onApply} disabled={!cleaned.trim()}>
+            Use cleaned answer
+          </Button>
+        </div>
+
+        {cleaned && (
+          <section className="mt-4 rounded-xl border bg-primary/5 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-primary">Cleaned answer preview</h3>
+            <p className="whitespace-pre-wrap text-sm">{cleaned}</p>
+          </section>
+        )}
+      </div>
+    </div>
   );
 }
 
