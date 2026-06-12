@@ -64,7 +64,7 @@ export interface Preferences {
 export const DEFAULT_PREFS: Preferences = {
   fontPx: 18,
   fontFamily: "default",
-  theme: "default",
+  theme: "dark",
   lineSpacing: "relaxed",
   ttsRate: 1,
   muteChime: false,
@@ -127,6 +127,6 @@ export const useExamStore = create<ExamState>()(
           startedAt: null,
         }),
     }),
-    { name: "inclusive-exam-store" },
+    { name: "inclusive-exam-store", version: 2 },
   ),
 );
