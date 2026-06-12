@@ -127,4 +127,43 @@ app.use((req, res) => {
   })
 })
 
+// POST Universal AI proxy endpoint
+app.post('/api/ai', async (req, res) => {
+  try {
+    const { systemPrompt, userMessage, maxTokens } = req.body;
+
+    if (!userMessage) {
+      return res.status(400).json({ error: 'Missing user message' });
+    }
+
+    // Secure backend call to Claude
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.CLAUDE_API_KEY, // Secret stays here!
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20240620", 
+        max_tokens: maxTokens || 1000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }]
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+
+  } catch (error) {
+    console.error('Error in AI processing:', error);
+    res.status(500).json({ error: 'Internal server error processing AI request' });
+  }
+});
+
 app.listen(3000, () => console.log('Running on port 3000 ✅'))
