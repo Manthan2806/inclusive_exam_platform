@@ -27,13 +27,18 @@ function LoginPage() {
   const [roll, setRoll] = useState("");
   const [selected, setSelected] = useState<DisabilityKey[]>([]);
   const [rollError, setRollError] = useState("");
+  const [rollTouched, setRollTouched] = useState(false);
 
   function toggle(k: DisabilityKey) {
     setSelected((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
   }
 
   function validateRoll(value: string) {
-    if (!/^\d{6}$/.test(value)) {
+    if (/[^0-9]/.test(value)) {
+      setRollError("Enter numeric data");
+      return false;
+    }
+    if (value.length !== 6) {
       setRollError("Roll number must be exactly 6 digits.");
       return false;
     }
@@ -43,6 +48,7 @@ function LoginPage() {
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setRollTouched(true);
     const trimmedRoll = roll.trim();
     if (!validateRoll(trimmedRoll)) return;
     setLogin(name.trim() || "Candidate", trimmedRoll, selected);
@@ -97,10 +103,27 @@ function LoginPage() {
               <input
                 id="roll"
                 required
+                placeholder="Enter 6 digits"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={roll}
-                onChange={(e) => setRoll(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setRoll(value);
+                  setRollTouched(true);
+                  validateRoll(value.trim());
+                }}
+                onBlur={() => {
+                  setRollTouched(true);
+                  validateRoll(roll.trim());
+                }}
                 className="h-11 w-full rounded-md border bg-background px-3"
               />
+              {rollError ? (
+                <p className="mt-2 text-sm text-destructive" role="alert">
+                  {rollError}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -143,7 +166,12 @@ function LoginPage() {
             <Link to="/admin" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
               Invigilator dashboard →
             </Link>
-            <Button type="submit" size="lg" className="h-12 min-w-[180px]">
+            <Button
+              type="submit"
+              size="lg"
+              className="h-12 min-w-[180px]"
+              disabled={!/^[0-9]{6}$/.test(roll.trim())}
+            >
               Begin exam <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
