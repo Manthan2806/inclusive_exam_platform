@@ -1,3 +1,4 @@
+import { submitAllAnswers } from "@/lib/api"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -38,9 +39,26 @@ function ReviewPage() {
   const flagged = EXAM.questions.filter((q) => answers[q.id]?.flagged).length;
   const total = EXAM.questions.length;
 
-  function submit() {
-    navigate({ to: "/confirmation" });
+  // function submit() {
+  //   navigate({ to: "/confirmation" });
+  // }
+
+  const [submitting, setSubmitting] = useState(false)
+
+async function submit() {
+  setSubmitting(true)
+  try {
+    const { answers, rollNo } = useExamStore.getState()
+    await submitAllAnswers(rollNo, answers)
+    navigate({ to: "/confirmation" })
+  } catch (err) {
+    console.error('Submission failed:', err)
+    // still navigate even if backend fails
+    navigate({ to: "/confirmation" })
+  } finally {
+    setSubmitting(false)
   }
+}
 
   function openReScribeModal(questionId: number) {
     setReScribeQuestionId(questionId);
@@ -166,9 +184,18 @@ function ReviewPage() {
               <Button asChild variant="outline">
                 <Link to="/exam/$id" params={{ id }}>Keep editing</Link>
               </Button>
-              <Button onClick={submit} size="lg" className="h-12 min-w-[180px]">
+              {/* <Button onClick={submit} size="lg" className="h-12 min-w-[180px]">
                 Submit final answers
-              </Button>
+              </Button> */}
+
+              <Button 
+  onClick={submit} 
+  size="lg" 
+  className="h-12 min-w-[180px]"
+  disabled={submitting}
+>
+  {submitting ? 'Submitting...' : 'Submit final answers'}
+</Button>
             </div>
           </div>
         </div>
