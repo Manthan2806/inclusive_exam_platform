@@ -1,36 +1,5 @@
 // src/lib/claudeAPI.ts
-// Claude API wrapper for the Inclusive Exam Platform
-//
-// Two functions:
-//   cleanupVoiceTranscript(rawText)     — AI Scribe: clean messy dictation
-//   simplifyComplexQuestion(questionText) — Simplify mode: rephrase question
-//
-// CRITICAL DESIGN PRINCIPLE (judges will ask about this):
-// Both functions ONLY clean/rephrase. They NEVER add facts, answer questions,
-// or expand beyond what was already said. This is enforced at the system prompt level.
- 
-const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
- 
-// ─────────────────────────────────────────────────────────────
-// API key — stored in env, never hardcoded
-// In Vite: import.meta.env.VITE_ANTHROPIC_API_KEY
-// In CRA:  process.env.REACT_APP_ANTHROPIC_API_KEY
-// ─────────────────────────────────────────────────────────────
-function getApiKey(): string {
-  const key =
-    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_ANTHROPIC_API_KEY) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_ANTHROPIC_API_KEY) ||
-    "";
- 
-  if (!key || key.trim() === "") {
-    throw new ApiKeyError(
-      "Anthropic API key is missing. Add VITE_ANTHROPIC_API_KEY to your .env file."
-    );
-  }
-  return key;
-}
- 
+
 // ─────────────────────────────────────────────────────────────
 // Custom error types — gives clear feedback in UI
 // ─────────────────────────────────────────────────────────────
@@ -51,7 +20,7 @@ export class ClaudeAPIError extends Error {
 }
  
 // ─────────────────────────────────────────────────────────────
-// Core fetch wrapper — used by both functions below
+// Core fetch wrapper — Hits your local Express backend!
 // ─────────────────────────────────────────────────────────────
 async function callClaude({
   systemPrompt,
@@ -62,42 +31,36 @@ async function callClaude({
   userMessage: string;
   maxTokens?: number;
 }): Promise<string> {
-  const apiKey = getApiKey(); // throws ApiKeyError if missing
  
   let response: Response;
   try {
-    response = await fetch(CLAUDE_API_URL, {
+    // Calling your local backend instead of Anthropic directly
+    response = await fetch('http://localhost:3000/api/ai', {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        // Required for direct browser calls — remove if routing through your backend
-        "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
+        maxTokens,
+        systemPrompt,
+        userMessage
       }),
     });
   } catch (networkError) {
-    // Network failure — no internet, CORS, etc.
     throw new ClaudeAPIError(
-      "Network error: Could not reach Claude API. Check your internet connection."
+      "Network error: Could not reach the local backend server. Is it running on port 3000?"
     );
   }
  
   if (!response.ok) {
-    let errorMessage = `Claude API error (${response.status})`;
+    let errorMessage = `API error (${response.status})`;
     try {
       const errorBody = await response.json();
       errorMessage = errorBody?.error?.message || errorMessage;
     } catch {}
  
     if (response.status === 401) {
-      throw new ApiKeyError("Invalid API key. Check your VITE_ANTHROPIC_API_KEY.");
+      throw new ApiKeyError("Backend API key is invalid. Check backend/.env");
     }
     if (response.status === 429) {
       throw new ClaudeAPIError("Rate limit hit. Please wait a moment and try again.", 429);
@@ -110,7 +73,7 @@ async function callClaude({
   // Extract text from response
   const textBlock = data?.content?.find((block: any) => block.type === "text");
   if (!textBlock?.text) {
-    throw new ClaudeAPIError("Unexpected response format from Claude API.");
+    throw new ClaudeAPIError("Unexpected response format from backend API.");
   }
  
   return textBlock.text.trim();
@@ -118,13 +81,6 @@ async function callClaude({
  
 // ─────────────────────────────────────────────────────────────
 // FUNCTION 1: AI Scribe — clean up messy voice dictation
-//
-// Input:  "uh um like the photosynthesis it's uh the plants
-//          make food from sunlight and uh water and uh yeah"
-// Output: "Plants make food from sunlight and water through photosynthesis."
-//
-// CONSTRAINT: Only fixes grammar/filler/structure.
-// NEVER adds facts. NEVER answers the question. NEVER expands content.
 // ─────────────────────────────────────────────────────────────
  
 const SCRIBE_SYSTEM_PROMPT = `You are an AI scribe for a differently-abled student taking an exam in India.
@@ -171,14 +127,6 @@ export async function cleanupVoiceTranscript(rawText: string): Promise<string> {
  
 // ─────────────────────────────────────────────────────────────
 // FUNCTION 2: Simplify Question — rephrase without changing meaning
-//
-// Input:  "Critically examine the socio-political implications
-//          of agrarian distress in post-liberalisation India
-//          with reference to relevant policy frameworks."
-// Output: "What are the social and political effects of farmers
-//          struggling in India after 1991? Mention government policies."
-//
-// CONSTRAINT: Same question, simpler words. Meaning must not change.
 // ─────────────────────────────────────────────────────────────
  
 const SIMPLIFY_SYSTEM_PROMPT = `You are helping a student with cognitive disabilities understand an exam question.
@@ -215,14 +163,3 @@ export async function simplifyComplexQuestion(questionText: string): Promise<str
  
   return result;
 }
- 
-// ─────────────────────────────────────────────────────────────
-// Named export of error classes for use in UI components
-// Usage:
-//   import { cleanupVoiceTranscript, ApiKeyError, ClaudeAPIError } from '../lib/claudeAPI'
-//   try { await cleanupVoiceTranscript(text) }
-//   catch (e) {
-//     if (e instanceof ApiKeyError) { /* show setup instructions */ }
-//     if (e instanceof ClaudeAPIError && e.statusCode === 429) { /* show rate limit msg */ }
-//   }
-// ─────────────────────────────────────────────────────────────

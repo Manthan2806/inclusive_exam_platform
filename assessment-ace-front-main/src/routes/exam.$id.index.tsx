@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { useExamStore } from "@/store/examStore";
 import { EXAM } from "@/lib/examData";
 import { speak, stopSpeaking } from "@/lib/tts";
-import { cleanupTranscript } from "@/lib/aiScribe";
+import { cleanupVoiceTranscript } from "@/lib/claudeAPI"; // ✅ Hooked up to real API
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { toast } from "sonner"; // ✅ Added for error handling
 import {
   ChevronLeft, ChevronRight, Flag, Mic, MicOff, Pencil, Sparkles,
   Volume2, VolumeX, Languages, ListChecks, Clock, AlertTriangle, Check, RotateCcw,
@@ -385,6 +386,7 @@ function SpeakArea({
   );
 }
 
+// ✅ UPDATED ScribeArea using Real AI Proxy
 function ScribeArea({
   value, onResult,
 }: { value: string; onResult: (raw: string, cleaned: string) => void }) {
@@ -393,14 +395,24 @@ function ScribeArea({
 
   async function finish() {
     if (!transcript.trim()) return;
-    stop();
-    setProcessing(true);
-    // simulate latency
-    await new Promise((r) => setTimeout(r, 600));
-    const cleaned = cleanupTranscript(transcript);
-    setProcessing(false);
-    onResult(transcript, cleaned);
-    reset();
+    
+    stop(); // Stop the microphone
+    setProcessing(true); // Spin up the loader
+
+    try {
+      // ✅ Call your secure local backend to talk to Claude!
+      const cleaned = await cleanupVoiceTranscript(transcript);
+      onResult(transcript, cleaned);
+    } catch (err) {
+      console.error("AI Proxy Error:", err);
+      toast.error("AI Scribe connection failed. Falling back to your raw text.");
+      
+      // Fallback: Pass the raw text as both the raw and cleaned so nothing is lost
+      onResult(transcript, transcript);
+    } finally {
+      setProcessing(false);
+      reset(); // Clear the mic buffer for the next attempt
+    }
   }
 
   if (!supported) {
@@ -430,7 +442,7 @@ function ScribeArea({
           {listening ? <Check className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
         </button>
         <div className="text-sm" role="status" aria-live="polite">
-          {processing ? <span>Cleaning up…</span> : listening ? <span className="font-medium text-destructive">Listening — press to finish</span> : <span className="text-muted-foreground">Press to start dictating</span>}
+          {processing ? <span>Cleaning up with Claude…</span> : listening ? <span className="font-medium text-destructive">Listening — press to finish</span> : <span className="text-muted-foreground">Press to start dictating</span>}
         </div>
       </div>
       {transcript && (
