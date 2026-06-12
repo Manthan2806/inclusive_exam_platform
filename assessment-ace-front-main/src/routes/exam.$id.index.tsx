@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { useExamStore } from "@/store/examStore";
 import { EXAM } from "@/lib/examData";
 import { speak, stopSpeaking } from "@/lib/tts";
-import { cleanupVoiceTranscript } from "@/lib/claudeAPI"; // ✅ Hooked up to real API
+// ✅ Import BOTH the Scribe and Simplify functions
+import { cleanupVoiceTranscript, simplifyComplexQuestion } from "@/lib/claudeAPI"; 
 import { useVoiceInput } from "@/hooks/useVoiceInput";
-import { toast } from "sonner"; // ✅ Added for error handling
+import { toast } from "sonner"; 
 import {
   ChevronLeft, ChevronRight, Flag, Mic, MicOff, Pencil, Sparkles,
   Volume2, VolumeX, Languages, ListChecks, Clock, AlertTriangle, Check, RotateCcw,
+  Loader2 // ✅ Added Loader2 for the simplify animation
 } from "lucide-react";
 
 export const Route = createFileRoute("/exam/$id/")({
@@ -70,6 +72,10 @@ function ExamPage() {
   const [scribeOpen, setScribeOpen] = useState(false);
   const [scribePreview, setScribePreview] = useState({ raw: "", cleaned: "" });
 
+  // ✅ New States for Live AI Simplification
+  const [isSimplifying, setIsSimplifying] = useState(false);
+  const [liveSimplifiedText, setLiveSimplifiedText] = useState("");
+
   const answerText = answers[q.id]?.text ?? "";
   const flagged = answers[q.id]?.flagged ?? false;
 
@@ -77,9 +83,43 @@ function ExamPage() {
     // Announce question change to screen readers
     const el = document.getElementById("question-live");
     if (el) el.textContent = `Question ${currentIndex + 1} of ${total}.`;
+    
+    // ✅ Reset the AI simplified text whenever the student changes questions
+    setLiveSimplifiedText("");
+    setShowSimple(false);
   }, [currentIndex, total]);
 
   const minTouch = config.largeTargets ? "h-14 min-w-14" : "h-12 min-w-12";
+
+  // ✅ The real AI click handler for the Simplify button
+  const handleSimplifyClick = async () => {
+    // If it's currently showing, just hide it
+    if (showSimple) {
+      setShowSimple(false);
+      return;
+    }
+
+    // If we already generated it for this exact question, just reveal it instantly
+    if (liveSimplifiedText) {
+      setShowSimple(true);
+      return;
+    }
+
+    // Otherwise, call the Claude API!
+    setShowSimple(true);
+    setIsSimplifying(true);
+    
+    try {
+      const aiText = await simplifyComplexQuestion(q.prompt);
+      setLiveSimplifiedText(aiText);
+    } catch (error) {
+      console.error("Simplification error:", error);
+      toast.error("AI simplification failed. Falling back to default.");
+      setLiveSimplifiedText(q.simplified); // Fallback to hardcoded mock if API fails
+    } finally {
+      setIsSimplifying(false);
+    }
+  };
 
   return (
     <AppShell>
@@ -123,7 +163,8 @@ function ExamPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => speak(showSimple ? q.simplified : q.prompt, prefs.ttsRate)}
+                    // ✅ Updated to speak whichever text is currently visible
+                    onClick={() => speak(showSimple && liveSimplifiedText ? liveSimplifiedText : q.prompt, prefs.ttsRate)}
                     aria-label="Read question aloud"
                   >
                     <Volume2 className="h-4 w-4" /> Read aloud
@@ -135,8 +176,9 @@ function ExamPage() {
                     type="button"
                     variant={showSimple ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setShowSimple((s) => !s)}
+                    onClick={handleSimplifyClick} // ✅ Triggers our new AI handler
                     aria-pressed={showSimple}
+                    disabled={isSimplifying} // Prevent spam clicks
                   >
                     <Languages className="h-4 w-4" /> {showSimple ? "Original" : "Simplify"}
                   </Button>
@@ -144,10 +186,17 @@ function ExamPage() {
               </div>
 
               <p className="text-foreground">{q.prompt}</p>
+              
+              {/* ✅ Updated AI Simplification Box */}
               {showSimple && (
                 <div className="mt-4 rounded-lg border-l-4 border-primary bg-primary/5 p-4">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Simplified</p>
-                  <p>{q.simplified}</p>
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                    {isSimplifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    AI Simplified
+                  </p>
+                  <p className={isSimplifying ? "animate-pulse text-muted-foreground" : "text-foreground"}>
+                    {isSimplifying ? "Claude is rewriting this question to be clearer..." : liveSimplifiedText}
+                  </p>
                 </div>
               )}
 
@@ -386,7 +435,6 @@ function SpeakArea({
   );
 }
 
-// ✅ UPDATED ScribeArea using Real AI Proxy
 function ScribeArea({
   value, onResult,
 }: { value: string; onResult: (raw: string, cleaned: string) => void }) {
@@ -400,18 +448,15 @@ function ScribeArea({
     setProcessing(true); // Spin up the loader
 
     try {
-      // ✅ Call your secure local backend to talk to Claude!
       const cleaned = await cleanupVoiceTranscript(transcript);
       onResult(transcript, cleaned);
     } catch (err) {
       console.error("AI Proxy Error:", err);
       toast.error("AI Scribe connection failed. Falling back to your raw text.");
-      
-      // Fallback: Pass the raw text as both the raw and cleaned so nothing is lost
       onResult(transcript, transcript);
     } finally {
       setProcessing(false);
-      reset(); // Clear the mic buffer for the next attempt
+      reset(); 
     }
   }
 
