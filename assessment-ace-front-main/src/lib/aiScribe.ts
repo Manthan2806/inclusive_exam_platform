@@ -1,42 +1,9 @@
-import { cleanupVoiceTranscript, simplifyComplexQuestion } from "./claudeAPI";
-
-// ── AI Scribe: clean up messy voice dictation ──
-// Drop-in replacement for the old cleanupTranscript()
-export async function cleanupTranscript(raw: string): Promise<string> {
-  if (!raw || raw.trim().length === 0) return raw;
-
-  try {
-    return await cleanupVoiceTranscript(raw);
-  } catch (error) {
-    // If Claude API fails for any reason, fall back to local regex
-    // so the exam never breaks for the student
-    console.warn("Claude API failed, falling back to local cleanup:", error);
-    return localFallbackCleanup(raw);
-  }
-}
-
-// ── Simplify Question: rephrase complex question ──
-// Drop-in replacement for the old simplifyQuestion()
-export async function simplifyQuestion(text: string): Promise<string> {
-  if (!text || text.trim().length === 0) return text;
-
-  try {
-    return await simplifyComplexQuestion(text);
-  } catch (error) {
-    console.warn("Claude API failed, falling back to local simplify:", error);
-    return localFallbackSimplify(text);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Local fallbacks — only used if Claude API is unreachable
-// Keeps the exam functional even without internet
-// ─────────────────────────────────────────────────────────────
-function localFallbackCleanup(raw: string): string {
+// Local "AI scribe" cleanup. Removes filler words, fixes spacing/capitalization,
+// merges run-ons into sentences. No external API needed for the frontend demo.
+export function cleanupTranscript(raw: string): string {
+  if (!raw) return "";
   const FILLERS = [
-    "uh","um","uhh","umm","like","you know","i mean",
-    "sort of","kind of","basically","actually","literally",
-    "so um","ah","er"
+    "uh","um","uhh","umm","like","you know","i mean","sort of","kind of","basically","actually","literally","so um","ah","er"
   ];
   let s = " " + raw.toLowerCase().replace(/\s+/g, " ").trim() + " ";
   for (const f of FILLERS) {
@@ -44,19 +11,22 @@ function localFallbackCleanup(raw: string): string {
     s = s.replace(re, " ");
   }
   s = s.replace(/\s+,/g, ",").replace(/\s+\./g, ".").replace(/\s+/g, " ").trim();
+  // Split into rough sentences on conjunctions / pauses
   const parts = s
     .replace(/\s+and then\s+/g, ". ")
     .replace(/\s+then\s+/g, ". ")
     .replace(/\s+so\s+/g, ". ")
     .split(/(?<=[.?!])\s+|\s*;\s*/);
-  return parts
+  const sentences = parts
     .map((p) => p.trim().replace(/[.?!]+$/, ""))
     .filter(Boolean)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1) + ".")
-    .join(" ");
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1) + ".");
+  return sentences.join(" ");
 }
 
-function localFallbackSimplify(text: string): string {
+export function simplifyQuestion(text: string): string {
+  // Mock "simplified language" — in production, calls Claude API.
+  // We rely on each question's pre-written simplified field, but this is a fallback.
   return text
     .replace(/\bcritically examine\b/gi, "explain clearly")
     .replace(/\bevaluate\b/gi, "judge")

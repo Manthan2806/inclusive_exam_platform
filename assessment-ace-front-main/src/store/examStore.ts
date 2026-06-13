@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { ExamData } from "@/lib/examData";
 
 export type DisabilityKey = "visual" | "motor" | "hearing" | "cognitive" | "multiple";
 
@@ -45,6 +46,7 @@ export function deriveConfig(keys: DisabilityKey[]): ProfileConfig {
   }
   if (keys.includes("hearing")) c.visualAlerts = true;
   if (keys.includes("multiple")) c.timeMultiplier = Math.max(c.timeMultiplier, 2);
+  if (keys.length > 1) c.timeMultiplier = Math.max(c.timeMultiplier, 2);
   return c;
 }
 
@@ -64,7 +66,7 @@ export interface Preferences {
 export const DEFAULT_PREFS: Preferences = {
   fontPx: 18,
   fontFamily: "default",
-  theme: "default",
+  theme: "dark",
   lineSpacing: "relaxed",
   ttsRate: 1,
   muteChime: false,
@@ -80,11 +82,14 @@ interface ExamState {
   rollNo: string;
   disabilities: DisabilityKey[];
   config: ProfileConfig;
+  exam: ExamData | null;
   prefs: Preferences;
   answers: Record<number, AnswerState>;
   currentIndex: number;
   startedAt: number | null;
   setLogin: (name: string, roll: string, disabilities: DisabilityKey[]) => void;
+  setExam: (exam: ExamData) => void;
+  setTimeMultiplier: (timeMultiplier: number) => void;
   setPrefs: (p: Partial<Preferences>) => void;
   setAnswer: (i: number, text: string) => void;
   toggleFlag: (i: number) => void;
@@ -100,12 +105,16 @@ export const useExamStore = create<ExamState>()(
       rollNo: "",
       disabilities: [],
       config: DEFAULT_CONFIG,
+      exam: null,
       prefs: DEFAULT_PREFS,
       answers: {},
       currentIndex: 0,
       startedAt: null,
       setLogin: (name, rollNo, disabilities) =>
         set({ name, rollNo, disabilities, config: deriveConfig(disabilities) }),
+      setExam: (exam) => set({ exam }),
+      setTimeMultiplier: (timeMultiplier) =>
+        set((s) => ({ config: { ...s.config, timeMultiplier } })),
       setPrefs: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
       setAnswer: (i, text) =>
         set((s) => ({
@@ -127,6 +136,6 @@ export const useExamStore = create<ExamState>()(
           startedAt: null,
         }),
     }),
-    { name: "inclusive-exam-store" },
+    { name: "inclusive-exam-store", version: 2 },
   ),
 );

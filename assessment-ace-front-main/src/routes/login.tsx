@@ -1,11 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { useExamStore, type DisabilityKey } from "@/store/examStore";
-import { EXAM } from "@/lib/examData";
-import { speak } from "@/lib/tts";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { startExamSession } from "@/lib/api";
 import { ShieldCheck, Mic, Timer, Eye, Brain, Ear, Hand, Users, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -24,46 +22,59 @@ const OPTIONS: { key: DisabilityKey; label: string; desc: string; icon: React.Re
 function LoginPage() {
   const navigate = useNavigate();
   const setLogin = useExamStore((s) => s.setLogin);
+  const setExam = useExamStore((s) => s.setExam);
+  const setTimeMultiplier = useExamStore((s) => s.setTimeMultiplier);
   const reset = useExamStore((s) => s.reset);
   const [name, setName] = useState("");
   const [roll, setRoll] = useState("");
   const [selected, setSelected] = useState<DisabilityKey[]>([]);
-  const [activeVoiceField, setActiveVoiceField] = useState<"name" | "roll" | null>(null);
-  const { listening, transcript, supported, error, start, stop, reset: resetVoice, setManual } = useVoiceInput();
-
-  useEffect(() => {
-    if (activeVoiceField === "name") {
-      setName(transcript);
-    } else if (activeVoiceField === "roll") {
-      setRoll(transcript);
-    }
-  }, [transcript, activeVoiceField]);
+  const [rollError, setRollError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [starting, setStarting] = useState(false);
 
   function toggle(k: DisabilityKey) {
     setSelected((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
   }
 
-  function startVoice(field: "name" | "roll") {
-    setActiveVoiceField(field);
-    resetVoice();
-    start();
+  function validateRoll(value: string) {
+    if (/[^0-9]/.test(value)) {
+      setRollError("Enter numeric data");
+      return false;
+    }
+    if (value.length !== 6) {
+      setRollError("Roll number must be exactly 6 digits.");
+      return false;
+    }
+    setRollError("");
+    return true;
   }
 
-  function stopVoice() {
-    stop();
-    setActiveVoiceField(null);
-  }
-
-  function readAccommodations() {
-    const speech = OPTIONS.map((o) => `${o.label}: ${o.desc}`).join(". ");
-    speak(speech, 1);
-  }
-
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLogin(name.trim() || "Candidate", roll.trim() || "ROLL-0001", selected);
-    reset();
-    navigate({ to: "/exam/$id", params: { id: EXAM.id } });
+    const trimmedRoll = roll.trim();
+    if (!validateRoll(trimmedRoll)) return;
+
+    setStarting(true);
+    setFormError("");
+
+    try {
+      const candidateName = name.trim() || "Candidate";
+      const response = await startExamSession({
+        name: candidateName,
+        rollNo: trimmedRoll,
+        disabilities: selected,
+      });
+
+      setLogin(candidateName, trimmedRoll, selected);
+      setExam(response.exam);
+      setTimeMultiplier(response.student.timeMultiplier);
+      reset();
+      navigate({ to: "/exam/$id", params: { id: response.exam.id } });
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Could not start exam.");
+    } finally {
+      setStarting(false);
+    }
   }
 
   return (
@@ -99,77 +110,44 @@ function LoginPage() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="name" className="mb-1 block text-sm font-medium">Full name</label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="name"
-                  required
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    if (activeVoiceField === "name") setManual(e.target.value);
-                  }}
-                  autoComplete="name"
-                  className="h-11 w-full rounded-md border bg-background px-3"
-                />
-                <button
-                  type="button"
-                  onClick={() => (activeVoiceField === "name" && listening ? stopVoice() : startVoice("name"))}
-                  className={`inline-flex h-11 w-11 items-center justify-center rounded-md border ${activeVoiceField === "name" && listening ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
-                  aria-pressed={activeVoiceField === "name" && listening}
-                  aria-label={activeVoiceField === "name" && listening ? "Stop voice input for name" : "Start voice input for name"}
-                >
-                  <Mic className="h-5 w-5" aria-hidden />
-                </button>
-              </div>
-              {activeVoiceField === "name" && listening && (
-                <p className="mt-2 text-xs text-destructive">Listening for name…</p>
-              )}
+              <input
+                id="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                className="h-11 w-full rounded-md border bg-background px-3"
+              />
             </div>
             <div>
               <label htmlFor="roll" className="mb-1 block text-sm font-medium">Roll number</label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="roll"
-                  required
-                  value={roll}
-                  onChange={(e) => {
-                    setRoll(e.target.value);
-                    if (activeVoiceField === "roll") setManual(e.target.value);
-                  }}
-                  className="h-11 w-full rounded-md border bg-background px-3"
-                />
-                <button
-                  type="button"
-                  onClick={() => (activeVoiceField === "roll" && listening ? stopVoice() : startVoice("roll"))}
-                  className={`inline-flex h-11 w-11 items-center justify-center rounded-md border ${activeVoiceField === "roll" && listening ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
-                  aria-pressed={activeVoiceField === "roll" && listening}
-                  aria-label={activeVoiceField === "roll" && listening ? "Stop voice input for roll number" : "Start voice input for roll number"}
-                >
-                  <Mic className="h-5 w-5" aria-hidden />
-                </button>
-              </div>
-              {activeVoiceField === "roll" && listening && (
-                <p className="mt-2 text-xs text-destructive">Listening for roll number…</p>
-              )}
+              <input
+                id="roll"
+                required
+                placeholder="Enter 6 digits"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={roll}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setRoll(value);
+                  validateRoll(value.trim());
+                }}
+                onBlur={() => {
+                  validateRoll(roll.trim());
+                }}
+                className="h-11 w-full rounded-md border bg-background px-3"
+              />
+              {rollError ? (
+                <p className="mt-2 text-sm text-destructive" role="alert">
+                  {rollError}
+                </p>
+              ) : null}
             </div>
           </div>
-          {(!supported || error) && (
-            <div className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50 p-3 text-sm text-amber-900">
-              {!supported ? (
-                <p>Voice input is not supported in this browser.</p>
-              ) : (
-                <p>Error with voice input: {error}</p>
-              )}
-            </div>
-          )}
 
           <fieldset className="mt-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <legend className="mb-2 text-sm font-medium">Disability profile (select all that apply)</legend>
-              <Button type="button" variant="outline" size="sm" className="h-9" onClick={readAccommodations}>
-                <Mic className="h-4 w-4" /> Read options
-              </Button>
-            </div>
+            <legend className="mb-2 text-sm font-medium">Disability profile (select all that apply)</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               {OPTIONS.map((o) => {
                 const checked = selected.includes(o.key);
@@ -204,11 +182,21 @@ function LoginPage() {
           </fieldset>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            {formError ? (
+              <p className="basis-full text-sm text-destructive" role="alert">
+                {formError}
+              </p>
+            ) : null}
             <Link to="/admin" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
               Invigilator dashboard →
             </Link>
-            <Button type="submit" size="lg" className="h-12 min-w-[180px]">
-              Begin exam <ArrowRight className="h-4 w-4" />
+            <Button
+              type="submit"
+              size="lg"
+              className="h-12 min-w-[180px]"
+              disabled={starting || !/^[0-9]{6}$/.test(roll.trim())}
+            >
+              {starting ? "Loading exam..." : "Begin exam"} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </form>

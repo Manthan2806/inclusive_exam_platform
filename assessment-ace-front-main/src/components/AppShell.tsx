@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useExamStore } from "@/store/examStore";
 import { AccessibilityToolbar } from "./AccessibilityToolbar";
+import { Toaster } from "@/components/ui/sonner";
 
 const FAMILY: Record<string, string> = {
   default: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
@@ -43,6 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Skip to main content
       </a>
       {children}
+      <Toaster />
       <AccessibilityToolbar />
     </div>
   );

@@ -4,7 +4,16 @@ export interface Question {
   simplified: string;
 }
 
-export const EXAM = {
+export interface ExamData {
+  id: string;
+  title: string;
+  examName?: string;
+  durationMinutes: number;
+  baseDurationMinutes?: number;
+  questions: Question[];
+}
+
+export const EXAM: ExamData = {
   id: "demo-1",
   title: "Mock UPSC General Studies — Paper I",
   durationMinutes: 30, // base time; multiplied by profile
@@ -44,5 +53,5 @@ export const EXAM = {
       simplified:
         "How might AI (computer programs that think like humans) affect jobs in India in the next 10 years?",
     },
-  ] as Question[],
+  ],
 };

@@ -11,10 +11,11 @@ export const Route = createFileRoute("/confirmation")({
 });
 
 function ConfirmationPage() {
-  const { name, rollNo, answers } = useExamStore();
+  const { name, rollNo, answers, exam: storedExam } = useExamStore();
   const reset = useExamStore((s) => s.reset);
+  const exam = storedExam ?? EXAM;
   const refNo = `INC-${Date.now().toString().slice(-8)}`;
-  const answered = EXAM.questions.filter((q) => answers[q.id]?.text?.trim()).length;
+  const answered = exam.questions.filter((q) => answers[q.id]?.text?.trim()).length;
 
   return (
     <AppShell>
@@ -31,7 +32,7 @@ function ConfirmationPage() {
           <Row label="Candidate" value={name || "—"} />
           <Row label="Roll number" value={rollNo || "—"} />
           <Row label="Reference ID" value={refNo} />
-          <Row label="Questions answered" value={`${answered} / ${EXAM.questions.length}`} />
+          <Row label="Questions answered" value={`${answered} / ${exam.questions.length}`} />
         </dl>
 
         <p className="mt-6 text-sm text-muted-foreground">

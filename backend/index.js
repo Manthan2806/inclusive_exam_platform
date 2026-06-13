@@ -1,130 +1,272 @@
-const admin = require('firebase-admin')
-const { getFirestore } = require('firebase-admin/firestore')
-const serviceAccount = require('./serviceAccountKey.json')
+require("dotenv").config();
+
+const admin = require("firebase-admin");
+const { getFirestore } = require("firebase-admin/firestore");
+const express = require("express");
+const cors = require("cors");
+const serviceAccount = require("./serviceAccountKey.json");
 
 admin.initializeApp({
-  credential: admin.cert(serviceAccount)
-})
+  credential: admin.cert(serviceAccount),
+});
 
-const db = getFirestore()
+const db = getFirestore();
+const app = express();
 
-const express = require('express')
-const cors = require('cors')
+const DEFAULT_EXAM_ID = "upsc-demo-1";
 
-const app = express()
-app.use(cors())
-app.use(express.json())
+app.use(cors());
+app.use(express.json());
 
-// Time multipliers for each disability category
 const timeMultipliers = {
+  visual: 1.5,
   visually_impaired: 1.5,
-  hearing_impaired: 1.25,
+  motor: 1.5,
   physical_disability: 1.5,
-  learning_disability: 1.75,
-  general: 1.0
+  hearing: 1,
+  hearing_impaired: 1,
+  cognitive: 2,
+  learning_disability: 2,
+  multiple: 2,
+  general: 1,
+};
+
+function getCategory(disabilities = []) {
+  if (!Array.isArray(disabilities) || disabilities.length === 0) return "general";
+  if (disabilities.includes("multiple") || disabilities.length > 1) return "multiple";
+  return disabilities[0];
 }
 
-// GET exam questions + calculated time
-app.get('/api/get-exam', async (req, res) => {
+function getTimeMultiplier(disabilities = [], category = "general") {
+  const keys = Array.isArray(disabilities) && disabilities.length > 0
+    ? [...disabilities, category]
+    : [category];
+  return keys.reduce((max, key) => Math.max(max, timeMultipliers[key] || 1), 1);
+}
+
+function normalizeExam(examId, exam) {
+  return {
+    id: examId,
+    title: exam.examName || exam.title || "Exam",
+    examName: exam.examName || exam.title || "Exam",
+    durationMinutes: exam.baseDurationMinutes || exam.durationMinutes || 30,
+    baseDurationMinutes: exam.baseDurationMinutes || exam.durationMinutes || 30,
+    questions: exam.questions || [],
+  };
+}
+
+async function getExamById(examId) {
+  const examDoc = await db.collection("exams").doc(examId).get();
+  if (!examDoc.exists) return null;
+  return normalizeExam(examDoc.id, examDoc.data());
+}
+
+app.post("/api/start-exam", async (req, res) => {
   try {
-    // Get student ID from query parameter
-    // example: /api/get-exam?uid=student1
-    const uid = req.query.uid || 'student1'
+    const {
+      name = "Candidate",
+      rollNo,
+      disabilities = [],
+      examId = DEFAULT_EXAM_ID,
+    } = req.body;
 
-    // Fetch exam data from Firestore
-    const examDoc = await db.collection('exams').doc('exam1').get()
-
-    // Check if exam exists
-    if (!examDoc.exists) {
-      return res.status(404).json({ 
-        error: 'Exam not found' 
-      })
+    if (!rollNo) {
+      return res.status(400).json({ error: "rollNo is required" });
     }
 
-    // Fetch student data from Firestore
-    const studentDoc = await db.collection('students').doc(uid).get()
-
-    // Check if student exists
-    if (!studentDoc.exists) {
-      return res.status(404).json({ 
-        error: 'Student not found' 
-      })
+    const exam = await getExamById(examId);
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
     }
 
-    const exam = examDoc.data()
-    const student = studentDoc.data()
+    const category = getCategory(disabilities);
+    const timeMultiplier = getTimeMultiplier(disabilities, category);
 
-    // Calculate effective time
-    // Use student's multiplier from DB, fallback to category multiplier
-    const multiplier = student.timeMultiplier || 
-                       timeMultipliers[student.category] || 
-                       1.0
+    await db.collection("students").doc(String(rollNo)).set(
+      {
+        name,
+        rollNo: String(rollNo),
+        category,
+        disabilities,
+        timeMultiplier,
+        updatedAt: new Date(),
+      },
+      { merge: true },
+    );
 
-    const effectiveTime = exam.baseDurationMinutes * multiplier
-
-    // Send back everything frontend needs
     res.json({
+      exam,
+      student: {
+        uid: String(rollNo),
+        rollNo: String(rollNo),
+        name,
+        category,
+        disabilities,
+        timeMultiplier,
+      },
+    });
+  } catch (error) {
+    console.error("Error starting exam:", error);
+    res.status(500).json({ error: "Something went wrong while starting exam" });
+  }
+});
+
+// Compatibility endpoint for quick manual checks:
+// GET /api/get-exam?uid=123456&examId=upsc-demo-1
+app.get("/api/get-exam", async (req, res) => {
+  try {
+    const uid = String(req.query.uid || "123456");
+    const examId = String(req.query.examId || DEFAULT_EXAM_ID);
+
+    const exam = await getExamById(examId);
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    const studentDoc = await db.collection("students").doc(uid).get();
+    const student = studentDoc.exists ? studentDoc.data() : {};
+    const category = student.category || "general";
+    const multiplier = student.timeMultiplier || getTimeMultiplier(student.disabilities, category);
+
+    res.json({
+      exam,
       questions: exam.questions,
       baseDuration: exam.baseDurationMinutes,
-      effectiveTime: effectiveTime,
-      studentName: student.name,
-      category: student.category,
-      multiplier: multiplier
-    })
-
+      effectiveTime: exam.baseDurationMinutes * multiplier,
+      studentName: student.name || "Candidate",
+      category,
+      multiplier,
+    });
   } catch (error) {
-    console.error('Error fetching exam:', error)
-    res.status(500).json({ 
-      error: 'Something went wrong while fetching exam' 
-    })
+    console.error("Error fetching exam:", error);
+    res.status(500).json({ error: "Something went wrong while fetching exam" });
   }
-})
+});
 
-// POST submit answer
-app.post('/api/submit-answer', async (req, res) => {
+app.post("/api/submit-exam", async (req, res) => {
   try {
-    const { uid, questionId, answer } = req.body
+    const { uid, rollNo, examId = DEFAULT_EXAM_ID, answers = [] } = req.body;
+    const studentId = String(uid || rollNo || "");
 
-    // Check all required fields are present
-    if (!uid || !questionId || !answer) {
-      return res.status(400).json({ 
-        error: 'uid, questionId and answer are all required' 
-      })
+    if (!studentId) {
+      return res.status(400).json({ error: "uid or rollNo is required" });
     }
 
-    // Check answer is not empty
-    if (answer.trim() === '') {
-      return res.status(400).json({ 
-        error: 'Answer cannot be empty' 
-      })
+    if (!Array.isArray(answers)) {
+      return res.status(400).json({ error: "answers must be an array" });
     }
 
-    // Save to Firestore
-    await db.collection('answers').add({
-      uid,
-      questionId,
-      answer,
-      submittedAt: new Date()
-    })
+    const submittedAt = new Date();
+    const normalizedAnswers = answers.map((answer) => ({
+      uid: studentId,
+      rollNo: studentId,
+      examId,
+      questionId: answer.questionId,
+      answer: answer.answer || "No answer provided",
+      flagged: Boolean(answer.flagged),
+      submittedAt,
+    }));
 
-    res.json({ 
+    const batch = db.batch();
+    normalizedAnswers.forEach((answer) => {
+      const answerRef = db.collection("answers").doc();
+      batch.set(answerRef, answer);
+    });
+
+    const submissionRef = db.collection("submissions").doc();
+    batch.set(submissionRef, {
+      uid: studentId,
+      rollNo: studentId,
+      examId,
+      answers: normalizedAnswers.map(({ submittedAt: _submittedAt, ...answer }) => answer),
+      submittedAt,
+    });
+
+    await batch.commit();
+
+    res.json({
       success: true,
-      message: 'Answer submitted successfully'
-    })
-
+      submissionId: submissionRef.id,
+      savedAnswers: normalizedAnswers.length,
+    });
   } catch (error) {
-    console.error('Error submitting answer:', error)
-    res.status(500).json({ 
-      error: 'Something went wrong while submitting answer' 
-    })
+    console.error("Error submitting exam:", error);
+    res.status(500).json({ error: "Something went wrong while submitting exam" });
   }
-})
+});
 
-// Handle invalid routes
+// Old single-answer endpoint kept so existing frontend calls or manual tests do not break.
+app.post("/api/submit-answer", async (req, res) => {
+  try {
+    const { uid, rollNo, examId = DEFAULT_EXAM_ID, questionId, answer, flagged = false } = req.body;
+    const studentId = String(uid || rollNo || "");
+
+    if (!studentId || !questionId) {
+      return res.status(400).json({ error: "uid/rollNo and questionId are required" });
+    }
+
+    await db.collection("answers").add({
+      uid: studentId,
+      rollNo: studentId,
+      examId,
+      questionId,
+      answer: answer || "No answer provided",
+      flagged: Boolean(flagged),
+      submittedAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      message: "Answer submitted successfully",
+    });
+  } catch (error) {
+    console.error("Error submitting answer:", error);
+    res.status(500).json({ error: "Something went wrong while submitting answer" });
+  }
+});
+
+app.post("/api/ai", async (req, res) => {
+  try {
+    const { systemPrompt, userMessage, maxTokens } = req.body;
+
+    if (!userMessage) {
+      return res.status(400).json({ error: { message: "Missing user message" } });
+    }
+
+    if (!process.env.CLAUDE_API_KEY) {
+      return res.status(401).json({ error: { message: "Missing CLAUDE_API_KEY in backend/.env" } });
+    }
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20240620",
+        max_tokens: maxTokens || 1000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("Error in AI processing:", error);
+    res.status(500).json({ error: { message: "Internal server error processing AI request" } });
+  }
+});
+
 app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Route not found' 
-  })
-})
+  res.status(404).json({ error: "Route not found" });
+});
 
-app.listen(3000, () => console.log('Running on port 3000 ✅'))
+app.listen(3000, () => console.log("Running on port 3000"));
