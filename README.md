@@ -154,6 +154,7 @@ Full audit report: [`/demo/accessibility-audit.md`](./demo/accessibility-audit.m
 - Lakhs appear for NEET, UPSC, GATE, and board exams annually
 - Direct integration path with NTA and CBSE disability registration systems
 
+"No physical scribe needed. No manual time extension needed. No separate room needed. The Inclusive Exam Platform makes accessible exams the default — not the exception."
 ---
 
 *Built for FAR AWAY 2026 — India's Biggest International Hackathon*

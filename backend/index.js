@@ -4,7 +4,9 @@ const admin = require("firebase-admin");
 const { getFirestore } = require("firebase-admin/firestore");
 const express = require("express");
 const cors = require("cors");
-const serviceAccount = require("./serviceAccountKey.json");
+const serviceAccount = process.env.SERVICE_ACCOUNT_KEY 
+  ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY)
+  : require('./serviceAccountKey.json')
 
 admin.initializeApp({
   credential: admin.cert(serviceAccount),
