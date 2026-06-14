@@ -112,7 +112,7 @@ bun run dev
 
 ## 🎬 Demo
 
-📹 **https://drive.google.com/drive/folders/1yX95Xo20Oex4lLlZXEmpXhDwkSkxubiJ**← *link will be added before submission*
+📹 https://drive.google.com/drive/folders/1yX95Xo20Oex4lLlZXEmpXhDwkSkxubiJ *link will be added before submission*
 
 ### What the demo shows
 1. Problem statement — real student denied scribe at NEET
