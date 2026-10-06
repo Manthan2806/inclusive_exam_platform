@@ -1,7 +1,7 @@
 import type { DisabilityKey } from "@/store/examStore";
 import type { ExamData } from "@/lib/examData";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 export const DEFAULT_EXAM_ID = "upsc-demo-1";
 
 export interface StartExamRequest {
