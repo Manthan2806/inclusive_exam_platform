@@ -12,12 +12,20 @@ admin.initializeApp({
   credential: admin.cert(serviceAccount),
 });
 
+
 const db = getFirestore();
 const app = express();
 
 const DEFAULT_EXAM_ID = "upsc-demo-1";
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://your-app.vercel.app'
+  ],
+  credentials: true
+}))
 app.use(express.json());
 
 const timeMultipliers = {
