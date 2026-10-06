@@ -240,40 +240,72 @@ app.post("/api/ai", async (req, res) => {
     const { systemPrompt, userMessage, maxTokens } = req.body;
 
     if (!userMessage) {
-      return res.status(400).json({ error: { message: "Missing user message" } });
+      return res.status(400).json({ 
+        error: { message: "Missing user message" } 
+      });
     }
 
-    if (!process.env.CLAUDE_API_KEY) {
-      return res.status(401).json({ error: { message: "Missing CLAUDE_API_KEY in backend/.env" } });
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(401).json({ 
+        error: { message: "Missing GEMINI_API_KEY in environment" } 
+      });
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.CLAUDE_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20240620",
-        max_tokens: maxTokens || 1000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
-      }),
-    });
+    // Combine system prompt and user message for Gemini
+    const fullPrompt = systemPrompt 
+      ? `${systemPrompt}\n\n${userMessage}` 
+      : userMessage;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ 
+              text: fullPrompt 
+            }]
+          }],
+          generationConfig: {
+            maxOutputTokens: maxTokens || 1000,
+            temperature: 0.3
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      return res.status(response.status).json({ 
+        error: { message: error.error?.message || "Gemini API error" } 
+      });
+    }
 
     const data = await response.json();
 
-    if (!response.ok) {
-      return res.status(response.status).json(data);
-    }
+    // Extract text from Gemini response
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    res.json(data);
+    // Return in same format as Claude API so frontend doesnt need changes
+    res.json({
+      content: [{ 
+        type: "text", 
+        text: text 
+      }]
+    });
+
   } catch (error) {
-    console.error("Error in AI processing:", error);
-    res.status(500).json({ error: { message: "Internal server error processing AI request" } });
+    console.error("AI API error:", error);
+    res.status(500).json({ 
+      error: { message: "Something went wrong with AI processing" } 
+    });
   }
 });
+
+
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
